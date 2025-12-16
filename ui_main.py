@@ -10,13 +10,11 @@ from PySide6.QtWidgets import (
     QTimeEdit, QSpinBox, QFrame, QCompleter
 )
 
-
-from core.paths import resource_path, app_root
+from core.paths import app_root, resource_path, pilih_template_berdasarkan_pembimbing
 from core.excel_loader import load_dosen_excel, Dosen
-from core.date_formatter import format_tanggal_indonesia, nama_hari_indonesia
+from core.date_formatter import format_tanggal_indonesia, nama_hari_indonesia, urutan_ke_kata
 from core.validator import FormData, validate_form
 from core.word_generator import generate_docx
-from core.date_formatter import urutan_ke_kata
 
 
 class MainWindow(QWidget):
@@ -25,7 +23,6 @@ class MainWindow(QWidget):
         self.setWindowTitle("Berita Acara & Nilai Ujian Skripsi (S1)")
         self.setMinimumWidth(860)
 
-        self.template_path: Path | None = None
         self.excel_path: Path | None = None
         self.output_root: Path = app_root() / "output"
 
@@ -69,6 +66,7 @@ class MainWindow(QWidget):
         self.in_npm = QLineEdit()
         self.in_judul = QTextEdit()
         self.in_judul.setFixedHeight(90)
+
         self.in_urutan = QSpinBox()
         self.in_urutan.setRange(1, 20)
         self.in_urutan.setValue(1)
@@ -146,23 +144,20 @@ class MainWindow(QWidget):
         row.setSpacing(10)
 
         self.btn_excel = QPushButton("Load Excel Dosen")
-        self.btn_template = QPushButton("Pilih Template .docx")
         self.btn_generate = QPushButton("Generate")
         self.btn_generate.setObjectName("primaryButton")
 
         row.addWidget(self.btn_excel)
-        row.addWidget(self.btn_template)
         row.addStretch(1)
         row.addWidget(self.btn_generate)
 
         root.addLayout(row)
 
-        self.lbl_status = QLabel("Status: siap. Load Excel & template (atau pakai default di resources/).")
+        self.lbl_status = QLabel("Status: siap. Load Excel (atau taruh resources/dosen.xlsx). Template auto.")
         self.lbl_status.setStyleSheet("color: #444; margin-top: 4px;")
         root.addWidget(self.lbl_status)
 
         self.btn_excel.clicked.connect(self.on_pick_excel)
-        self.btn_template.clicked.connect(self.on_pick_template)
         self.btn_generate.clicked.connect(self.on_generate)
 
     def _apply_styles(self):
@@ -214,24 +209,17 @@ class MainWindow(QWidget):
         comp.setFilterMode(Qt.MatchContains)
         return cb
 
-
-
     def _on_date_changed(self, qdate: QDate):
         self.in_hari.setText(nama_hari_indonesia(qdate))
 
     # ---------- Defaults ----------
     def _load_defaults_if_any(self):
-        # Default template/excel di resources/
-        default_template = resource_path("resources/template_berita_acara_dan_nilai.docx")
         default_excel = resource_path("resources/dosen.xlsx")
-
-        if default_template.exists():
-            self.template_path = default_template
         if default_excel.exists():
             self.excel_path = default_excel
             try:
                 self._load_excel_into_ui(default_excel)
-                self.lbl_status.setText("Status: default Excel & template terdeteksi. Tinggal isi form dan Generate.")
+                self.lbl_status.setText("Status: default Excel terdeteksi. Template auto (1/2 pembimbing).")
             except Exception as e:
                 self.lbl_status.setText(f"Status: default Excel ditemukan, tapi gagal load: {e}")
 
@@ -257,7 +245,7 @@ class MainWindow(QWidget):
         def refill(cb: QComboBox, keep_text: str | None = None):
             cb.blockSignals(True)
             cb.clear()
-            cb.addItem("")  # allow empty for optional field
+            cb.addItem("")  # allow empty for optional
             cb.addItems(items)
             if keep_text:
                 idx = cb.findText(keep_text)
@@ -280,25 +268,36 @@ class MainWindow(QWidget):
             return None
         return self.dosen_by_id.get(dosen_id)
 
-    # ---------- Template ----------
-    def on_pick_template(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Pilih Template Word", str(app_root()), "Word (*.docx)")
-        if not path:
-            return
-        self.template_path = Path(path)
-        self.lbl_status.setText(f"Status: template dipilih: {self.template_path.name}")
-
     # ---------- Generate ----------
     def on_generate(self):
-        # hard checks
-        if not self.template_path or not self.template_path.exists():
-            QMessageBox.warning(self, "Belum siap", "Template .docx belum dipilih / tidak ditemukan.")
-            return
+        # Excel wajib ada
         if not self.excel_path or not self.excel_path.exists():
             QMessageBox.warning(self, "Belum siap", "Excel dosen belum diload / tidak ditemukan.")
             return
 
-        # gather
+        # Ambil dosen
+        pb1 = self._selected_dosen(self.cb_pb1.currentText().strip())
+        pb2 = self._selected_dosen(self.cb_pb2.currentText().strip())
+        pj1 = self._selected_dosen(self.cb_pj1.currentText().strip())
+        pj2 = self._selected_dosen(self.cb_pj2.currentText().strip())
+
+        if not pb1:
+            QMessageBox.warning(self, "Input belum valid", "Pembimbing 1 wajib dipilih.")
+            return
+
+        # Tentukan jumlah pembimbing & template
+        jumlah_pembimbing = 2 if pb2 else 1
+        template_path = pilih_template_berdasarkan_pembimbing(jumlah_pembimbing)
+
+        if not template_path.exists():
+            QMessageBox.critical(
+                self,
+                "Template tidak ditemukan",
+                f"Template tidak ditemukan:\n{template_path}\n\nPastikan file ada di folder resources/."
+            )
+            return
+
+        # Ambil data mahasiswa
         nama_mhs = self.in_nama.text().strip()
         npm = self.in_npm.text().strip()
         judul = self.in_judul.toPlainText().strip()
@@ -307,63 +306,58 @@ class MainWindow(QWidget):
         urutan_kata = urutan_ke_kata(urutan_angka)
 
         hari = self.in_hari.text().strip()
-
         tanggal_str = format_tanggal_indonesia(self.in_tanggal.date())
         jam_mulai = self.in_mulai.time().toString("HH:mm")
         jam_selesai = self.in_selesai.time().toString("HH:mm")
 
-        pb1 = self._selected_dosen(self.cb_pb1.currentText().strip())
-        pb2 = self._selected_dosen(self.cb_pb2.currentText().strip())
-        pj1 = self._selected_dosen(self.cb_pj1.currentText().strip())
-        pj2 = self._selected_dosen(self.cb_pj2.currentText().strip())
-
+        # Validasi form
         fd = FormData(
             nama_mahasiswa=nama_mhs,
             npm=npm,
             judul_skripsi=judul,
-            urutan=urutan_angka,  # validasi tetap pakai angka (aman)
+            urutan=urutan_angka,
             hari=hari,
             jam_mulai=jam_mulai,
             jam_selesai=jam_selesai,
-            pembimbing_1=pb1.nama if pb1 else "",
+            pembimbing_1=pb1.nama,
             pembimbing_2=pb2.nama if pb2 else "",
             penguji_1=pj1.nama if pj1 else "",
             penguji_2=pj2.nama if pj2 else "",
         )
+
         ok, msg = validate_form(fd)
         if not ok:
             QMessageBox.warning(self, "Input belum valid", msg)
             return
 
-        # context sesuai placeholder template Word kamu
+        # Context Word
         context = {
             "hari": hari,
             "tanggal_bulan_tahun": tanggal_str,
             "jam_mulai": jam_mulai,
             "jam_selesai": jam_selesai,
-            "urutan": urutan_kata,  # <- ini yang masuk ke Word (pertama, kedua, dst)
+            "urutan": urutan_kata,
 
             "nama_mahasiswa": nama_mhs,
             "npm": npm,
             "judul_skripsi": judul,
 
-            "pembimbing_1": pb1.nama if pb1 else "",
+            "pembimbing_1": pb1.nama,
             "pembimbing_2": pb2.nama if pb2 else "",
 
             "penguji_1": pj1.nama if pj1 else "",
             "penguji_2": pj2.nama if pj2 else "",
 
-            # penguji 1
             "nipnup_penguji1": pj1.jenis_id if pj1 else "",
             "nomor_nipnup_penguji1": pj1.id if pj1 else "",
-            # penguji 2
             "nipnup_penguji2": pj2.jenis_id if pj2 else "",
             "nomor_nipnup_penguji2": pj2.id if pj2 else "",
         }
 
+        # Generate DOCX
         try:
             out_path = generate_docx(
-                template_path=self.template_path,
+                template_path=template_path,
                 output_root=self.output_root,
                 nama_mahasiswa=nama_mhs,
                 npm=npm,
@@ -373,5 +367,7 @@ class MainWindow(QWidget):
             QMessageBox.critical(self, "Gagal generate", str(e))
             return
 
-        self.lbl_status.setText(f"Status: sukses → {out_path}")
+        self.lbl_status.setText(
+            f"Status: sukses (template {jumlah_pembimbing} pembimbing) → {out_path}"
+        )
         QMessageBox.information(self, "Sukses", f"Dokumen berhasil dibuat:\n{out_path}")
