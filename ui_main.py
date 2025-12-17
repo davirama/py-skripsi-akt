@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QDate, QUrl
+from PySide6.QtGui import QFont, QDesktopServices
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit, QTextEdit,
     QPushButton, QFileDialog, QMessageBox, QGroupBox, QComboBox, QDateEdit,
-    QTimeEdit, QSpinBox, QFrame, QCompleter
+    QTimeEdit, QSpinBox, QFrame, QCompleter, QSizePolicy
 )
 
 from core.paths import app_root, resource_path, pilih_template_berdasarkan_pembimbing
@@ -21,7 +21,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Berita Acara & Nilai Ujian Skripsi (S1)")
-        self.setMinimumWidth(860)
+        self.setMinimumWidth(920)
 
         self.excel_path: Path | None = None
         self.output_root: Path = app_root() / "output"
@@ -32,6 +32,10 @@ class MainWindow(QWidget):
         self._build_ui()
         self._apply_styles()
         self._load_defaults_if_any()
+        self._refresh_output_label()
+
+        # Kalau kamu MAU maksa dari sini (opsional), uncomment:
+        # self.showMaximized()
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -45,7 +49,7 @@ class MainWindow(QWidget):
         f.setBold(True)
         title.setFont(f)
 
-        subtitle = QLabel("Pilih dosen dari Excel → isi form → generate .docx ke output/Nama_NPM/")
+        subtitle = QLabel("Pilih dosen dari Excel → isi form → generate .docx ke folder output/Nama_NPM/")
         subtitle.setStyleSheet("color: #666;")
 
         root.addWidget(title)
@@ -56,71 +60,123 @@ class MainWindow(QWidget):
         line.setFrameShadow(QFrame.Sunken)
         root.addWidget(line)
 
-        # --- Data Mahasiswa ---
+        # =========================
+        # Data Mahasiswa (FIX)
+        # =========================
         g_mhs = QGroupBox("Data Mahasiswa")
         lay_mhs = QGridLayout(g_mhs)
         lay_mhs.setHorizontalSpacing(10)
         lay_mhs.setVerticalSpacing(8)
 
+        # kunci proporsi kolom
+        lay_mhs.setColumnStretch(0, 0)   # label kiri
+        lay_mhs.setColumnStretch(1, 5)   # input kiri
+        lay_mhs.setColumnStretch(2, 0)   # label kanan
+        lay_mhs.setColumnStretch(3, 3)   # input kanan
+
+        # kunci tinggi baris "Ujian ke-" biar spinbox gak ke-cut saat fullscreen
+        lay_mhs.setRowMinimumHeight(2, 44)
+
         self.in_nama = QLineEdit()
         self.in_npm = QLineEdit()
+
         self.in_judul = QTextEdit()
         self.in_judul.setFixedHeight(90)
 
         self.in_urutan = QSpinBox()
         self.in_urutan.setRange(1, 20)
         self.in_urutan.setValue(1)
+        self.in_urutan.setFixedWidth(120)
+        self.in_urutan.setMinimumHeight(34)  # <- kunci tinggi supaya tidak ketiban
+        self.in_urutan.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
+        # row 0 (SEMUA SATU BARIS, AMAN FULLSCREEN)
         lay_mhs.addWidget(QLabel("Nama Mahasiswa"), 0, 0)
         lay_mhs.addWidget(self.in_nama, 0, 1)
+
         lay_mhs.addWidget(QLabel("NPM"), 0, 2)
         lay_mhs.addWidget(self.in_npm, 0, 3)
 
-        lay_mhs.addWidget(QLabel("Judul Skripsi"), 1, 0, Qt.AlignTop)
-        lay_mhs.addWidget(self.in_judul, 1, 1, 1, 3)
+        lay_mhs.addWidget(QLabel("Ujian ke-"), 0, 4, Qt.AlignRight)
+        lay_mhs.addWidget(self.in_urutan, 0, 5, Qt.AlignLeft)
 
-        lay_mhs.addWidget(QLabel("Ujian ke-"), 2, 0)
-        lay_mhs.addWidget(self.in_urutan, 2, 1)
+
+        # row 1
+        lay_mhs.addWidget(QLabel("Judul Skripsi"), 1, 0, Qt.AlignTop)
+        lay_mhs.addWidget(self.in_judul, 1, 1, 1, 5)
+
+
+        # spacer untuk ngisi sisa kolom 2-3 (supaya layout rapi)
+        sp = QWidget()
+        sp.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        lay_mhs.addWidget(sp, 2, 2, 1, 2)
 
         root.addWidget(g_mhs)
 
-        # --- Waktu ---
+        # =========================
+        # Waktu Ujian (1 baris, RATA & STABIL)
+        # =========================
         g_waktu = QGroupBox("Waktu Ujian")
         lay_waktu = QGridLayout(g_waktu)
         lay_waktu.setHorizontalSpacing(10)
-        lay_waktu.setVerticalSpacing(8)
+        lay_waktu.setVerticalSpacing(6)
 
+        # atur proporsi kolom
+        lay_waktu.setColumnStretch(0, 0)  # label
+        lay_waktu.setColumnStretch(1, 2)  # tanggal
+        lay_waktu.setColumnStretch(2, 0)  # label
+        lay_waktu.setColumnStretch(3, 3)  # hari (paling panjang)
+        lay_waktu.setColumnStretch(4, 0)  # label
+        lay_waktu.setColumnStretch(5, 1)  # jam mulai
+        lay_waktu.setColumnStretch(6, 0)  # label
+        lay_waktu.setColumnStretch(7, 1)  # jam selesai
+
+        # widgets
         self.in_tanggal = QDateEdit()
         self.in_tanggal.setCalendarPopup(True)
         self.in_tanggal.setDate(QDate.currentDate())
         self.in_tanggal.dateChanged.connect(self._on_date_changed)
+        self.in_tanggal.setMinimumHeight(34)
 
         self.in_hari = QLineEdit()
         self.in_hari.setReadOnly(True)
         self.in_hari.setText(nama_hari_indonesia(self.in_tanggal.date()))
+        self.in_hari.setMinimumHeight(34)
 
         self.in_mulai = QTimeEdit()
         self.in_mulai.setDisplayFormat("HH:mm")
+        self.in_mulai.setMinimumHeight(34)
+
         self.in_selesai = QTimeEdit()
         self.in_selesai.setDisplayFormat("HH:mm")
+        self.in_selesai.setMinimumHeight(34)
 
+        # row 0 (label)
         lay_waktu.addWidget(QLabel("Tanggal"), 0, 0)
-        lay_waktu.addWidget(self.in_tanggal, 0, 1)
         lay_waktu.addWidget(QLabel("Hari (auto)"), 0, 2)
-        lay_waktu.addWidget(self.in_hari, 0, 3)
+        lay_waktu.addWidget(QLabel("Jam Mulai"), 0, 4)
+        lay_waktu.addWidget(QLabel("Jam Selesai"), 0, 6)
 
-        lay_waktu.addWidget(QLabel("Jam Mulai"), 1, 0)
-        lay_waktu.addWidget(self.in_mulai, 1, 1)
-        lay_waktu.addWidget(QLabel("Jam Selesai"), 1, 2)
-        lay_waktu.addWidget(self.in_selesai, 1, 3)
+        # row 1 (input)
+        lay_waktu.addWidget(self.in_tanggal, 1, 0, 1, 2)
+        lay_waktu.addWidget(self.in_hari, 1, 2, 1, 2)
+        lay_waktu.addWidget(self.in_mulai, 1, 4, 1, 2)
+        lay_waktu.addWidget(self.in_selesai, 1, 6, 1, 2)
 
         root.addWidget(g_waktu)
 
-        # --- Dosen ---
+        # =========================
+        # Dosen
+        # =========================
         g_dosen = QGroupBox("Dosen")
         lay_dosen = QGridLayout(g_dosen)
         lay_dosen.setHorizontalSpacing(10)
         lay_dosen.setVerticalSpacing(8)
+
+        lay_dosen.setColumnStretch(0, 0)
+        lay_dosen.setColumnStretch(1, 1)
+        lay_dosen.setColumnStretch(2, 0)
+        lay_dosen.setColumnStretch(3, 1)
 
         self.cb_pb1 = self._make_searchable_combo("Pilih Pembimbing 1 (wajib)")
         self.cb_pb2 = self._make_searchable_combo("Pilih Pembimbing 2 (opsional)")
@@ -139,25 +195,57 @@ class MainWindow(QWidget):
 
         root.addWidget(g_dosen)
 
-        # --- Buttons row ---
-        row = QHBoxLayout()
-        row.setSpacing(10)
+        # =========================
+        # Folder Output
+        # =========================
+        g_out = QGroupBox("Folder Output")
+        lay_out = QGridLayout(g_out)
+        lay_out.setHorizontalSpacing(10)
+        lay_out.setVerticalSpacing(8)
+
+        lay_out.setColumnStretch(0, 0)
+        lay_out.setColumnStretch(1, 1)
+        lay_out.setColumnStretch(2, 0)
+        lay_out.setColumnStretch(3, 0)
+
+        self.out_path_view = QLineEdit()
+        self.out_path_view.setReadOnly(True)
+
+        self.btn_output = QPushButton("Pilih Folder Output")
+        self.btn_open_output = QPushButton("Buka Folder Output")
+
+        lay_out.addWidget(QLabel("Lokasi"), 0, 0)
+        lay_out.addWidget(self.out_path_view, 0, 1, 1, 3)
+        lay_out.addWidget(self.btn_output, 1, 2)
+        lay_out.addWidget(self.btn_open_output, 1, 3)
+
+        root.addWidget(g_out)
+
+        # =========================
+        # Buttons
+        # =========================
+        row_btn = QHBoxLayout()
+        row_btn.setSpacing(10)
 
         self.btn_excel = QPushButton("Load Excel Dosen")
         self.btn_generate = QPushButton("Generate")
         self.btn_generate.setObjectName("primaryButton")
+        self.btn_generate.setFixedWidth(140)
 
-        row.addWidget(self.btn_excel)
-        row.addStretch(1)
-        row.addWidget(self.btn_generate)
+        row_btn.addWidget(self.btn_excel)
+        row_btn.addStretch(1)
+        row_btn.addWidget(self.btn_generate)
 
-        root.addLayout(row)
+        root.addLayout(row_btn)
 
-        self.lbl_status = QLabel("Status: siap. Load Excel (atau taruh resources/dosen.xlsx). Template auto.")
+        self.lbl_status = QLabel("Status: siap. Template auto (1/2 pembimbing).")
         self.lbl_status.setStyleSheet("color: #444; margin-top: 4px;")
         root.addWidget(self.lbl_status)
 
+        # signals
         self.btn_excel.clicked.connect(self.on_pick_excel)
+        self.btn_output.clicked.connect(self.on_pick_output_folder)
+        self.btn_open_output.clicked.connect(self.on_open_output_folder)
         self.btn_generate.clicked.connect(self.on_generate)
 
     def _apply_styles(self):
@@ -212,6 +300,23 @@ class MainWindow(QWidget):
     def _on_date_changed(self, qdate: QDate):
         self.in_hari.setText(nama_hari_indonesia(qdate))
 
+    # ---------- Output folder ----------
+    def _refresh_output_label(self):
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        self.out_path_view.setText(str(self.output_root))
+
+    def on_pick_output_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Pilih Folder Output", str(self.output_root))
+        if not folder:
+            return
+        self.output_root = Path(folder)
+        self._refresh_output_label()
+        self.lbl_status.setText(f"Status: folder output diubah → {self.output_root}")
+
+    def on_open_output_folder(self):
+        self._refresh_output_label()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_root)))
+
     # ---------- Defaults ----------
     def _load_defaults_if_any(self):
         default_excel = resource_path("resources/dosen.xlsx")
@@ -245,7 +350,7 @@ class MainWindow(QWidget):
         def refill(cb: QComboBox, keep_text: str | None = None):
             cb.blockSignals(True)
             cb.clear()
-            cb.addItem("")  # allow empty for optional
+            cb.addItem("")
             cb.addItems(items)
             if keep_text:
                 idx = cb.findText(keep_text)
@@ -270,12 +375,10 @@ class MainWindow(QWidget):
 
     # ---------- Generate ----------
     def on_generate(self):
-        # Excel wajib ada
         if not self.excel_path or not self.excel_path.exists():
             QMessageBox.warning(self, "Belum siap", "Excel dosen belum diload / tidak ditemukan.")
             return
 
-        # Ambil dosen
         pb1 = self._selected_dosen(self.cb_pb1.currentText().strip())
         pb2 = self._selected_dosen(self.cb_pb2.currentText().strip())
         pj1 = self._selected_dosen(self.cb_pj1.currentText().strip())
@@ -285,7 +388,6 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Input belum valid", "Pembimbing 1 wajib dipilih.")
             return
 
-        # Tentukan jumlah pembimbing & template
         jumlah_pembimbing = 2 if pb2 else 1
         template_path = pilih_template_berdasarkan_pembimbing(jumlah_pembimbing)
 
@@ -297,7 +399,6 @@ class MainWindow(QWidget):
             )
             return
 
-        # Ambil data mahasiswa
         nama_mhs = self.in_nama.text().strip()
         npm = self.in_npm.text().strip()
         judul = self.in_judul.toPlainText().strip()
@@ -310,7 +411,6 @@ class MainWindow(QWidget):
         jam_mulai = self.in_mulai.time().toString("HH:mm")
         jam_selesai = self.in_selesai.time().toString("HH:mm")
 
-        # Validasi form
         fd = FormData(
             nama_mahasiswa=nama_mhs,
             npm=npm,
@@ -330,7 +430,6 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Input belum valid", msg)
             return
 
-        # Context Word
         context = {
             "hari": hari,
             "tanggal_bulan_tahun": tanggal_str,
@@ -354,8 +453,8 @@ class MainWindow(QWidget):
             "nomor_nipnup_penguji2": pj2.id if pj2 else "",
         }
 
-        # Generate DOCX
         try:
+            self._refresh_output_label()
             out_path = generate_docx(
                 template_path=template_path,
                 output_root=self.output_root,
@@ -367,7 +466,5 @@ class MainWindow(QWidget):
             QMessageBox.critical(self, "Gagal generate", str(e))
             return
 
-        self.lbl_status.setText(
-            f"Status: sukses (template {jumlah_pembimbing} pembimbing) → {out_path}"
-        )
+        self.lbl_status.setText(f"Status: sukses (template {jumlah_pembimbing} pembimbing) → {out_path}")
         QMessageBox.information(self, "Sukses", f"Dokumen berhasil dibuat:\n{out_path}")
