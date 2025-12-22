@@ -241,7 +241,7 @@ class MainWindow(QWidget):
         self.in_tanggal_nd.setDate(QDate.currentDate())
 
         self.cb_prodi = QComboBox()
-        self.cb_prodi.addItems(["Aktuaria", "Statistika", "Matematika"])
+        self.cb_prodi.addItems(["Ilmu Aktuaria", "Statistika", "Matematika"])
         self.cb_prodi.setCurrentIndex(0)
 
         self.in_lokasi_ujian = QLineEdit()
