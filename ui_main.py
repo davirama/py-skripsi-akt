@@ -1,8 +1,9 @@
+# ui_main.py
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QDate, QUrl, QTime
+from PySide6.QtCore import Qt, QDate, QUrl
 from PySide6.QtGui import QFont, QDesktopServices
 from PySide6.QtWidgets import (
     QWidget,
@@ -18,7 +19,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QComboBox,
     QDateEdit,
-    QTimeEdit,
     QSpinBox,
     QFrame,
     QCompleter,
@@ -43,6 +43,37 @@ from core.validator import FormData, validate_form, validate_nota_dinas_inputs
 from core.word_generator import generate_docx
 
 
+# =========================
+# Widgets: anti-scroll-wheel
+# =========================
+class NoWheelComboBox(QComboBox):
+    """
+    Mencegah mouse wheel mengubah pilihan saat dropdown/popup tidak terbuka.
+    Wheel hanya aktif kalau popup sedang terbuka.
+    """
+
+    def wheelEvent(self, event):
+        if not self.view().isVisible():
+            event.ignore()
+            return
+        super().wheelEvent(event)
+
+
+class NoWheelDateEdit(QDateEdit):
+    """
+    Mencegah mouse wheel mengubah tanggal saat calendar popup tidak terbuka.
+    Wheel hanya aktif kalau popup calendar sedang terbuka.
+    """
+
+    def wheelEvent(self, event):
+        # calendarWidget() tersedia jika setCalendarPopup(True)
+        cal = self.calendarWidget()
+        if cal is None or not cal.isVisible():
+            event.ignore()
+            return
+        super().wheelEvent(event)
+
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -62,9 +93,7 @@ class MainWindow(QWidget):
 
     # ---------- UI ----------
     def _build_ui(self):
-        # ==============
         # Scroll wrapper
-        # ==============
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
@@ -117,8 +146,7 @@ class MainWindow(QWidget):
         self.in_nama = QLineEdit()
         self.in_npm = QLineEdit()
 
-        self.in_judul = QTextEdit()
-        self.in_judul.setFixedHeight(90)
+        self.in_judul = QLineEdit()
 
         self.in_urutan = QSpinBox()
         self.in_urutan.setRange(1, 20)
@@ -127,7 +155,6 @@ class MainWindow(QWidget):
         self.in_urutan.setMinimumHeight(34)
         self.in_urutan.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
-        # row 0
         lay_mhs.addWidget(QLabel("Nama Mahasiswa"), 0, 0)
         lay_mhs.addWidget(self.in_nama, 0, 1)
         lay_mhs.addWidget(QLabel("NPM"), 0, 2)
@@ -135,7 +162,6 @@ class MainWindow(QWidget):
         lay_mhs.addWidget(QLabel("Ujian ke-"), 0, 4, Qt.AlignRight)
         lay_mhs.addWidget(self.in_urutan, 0, 5, Qt.AlignLeft)
 
-        # row 1
         lay_mhs.addWidget(QLabel("Judul Skripsi"), 1, 0, Qt.AlignTop)
         lay_mhs.addWidget(self.in_judul, 1, 1, 1, 5)
 
@@ -154,11 +180,9 @@ class MainWindow(QWidget):
         lay_waktu.setColumnStretch(2, 0)
         lay_waktu.setColumnStretch(3, 3)
         lay_waktu.setColumnStretch(4, 0)
-        lay_waktu.setColumnStretch(5, 1)
-        lay_waktu.setColumnStretch(6, 0)
-        lay_waktu.setColumnStretch(7, 1)
+        lay_waktu.setColumnStretch(5, 4)
 
-        self.in_tanggal = QDateEdit()
+        self.in_tanggal = NoWheelDateEdit()
         self.in_tanggal.setCalendarPopup(True)
         self.in_tanggal.setDate(QDate.currentDate())
         self.in_tanggal.dateChanged.connect(self._on_date_changed)
@@ -167,25 +191,24 @@ class MainWindow(QWidget):
         self.in_hari.setReadOnly(True)
         self.in_hari.setText(nama_hari_indonesia(self.in_tanggal.date()))
 
-        self.in_mulai = QTimeEdit()
-        self.in_mulai.setDisplayFormat("HH:mm")
-        self.in_mulai.setTime(QTime(0, 0))
+        self.cb_jam_slot = NoWheelComboBox()
+        self.cb_jam_slot.addItems(
+            [
+                "",
+                "08.00 - 10.00 WIB",
+                "10.00 - 12.00 WIB",
+                "13.00 - 15.00 WIB",
+                "15.00 - 17.00 WIB",
+            ]
+        )
 
-        self.in_selesai = QTimeEdit()
-        self.in_selesai.setDisplayFormat("HH:mm")
-        self.in_selesai.setTime(QTime(0, 0))
-
-        # row 0 labels
         lay_waktu.addWidget(QLabel("Tanggal"), 0, 0)
         lay_waktu.addWidget(QLabel("Hari (auto)"), 0, 2)
-        lay_waktu.addWidget(QLabel("Jam Mulai"), 0, 4)
-        lay_waktu.addWidget(QLabel("Jam Selesai"), 0, 6)
+        lay_waktu.addWidget(QLabel("Waktu Ujian"), 0, 4)
 
-        # row 1 inputs
         lay_waktu.addWidget(self.in_tanggal, 1, 0, 1, 2)
         lay_waktu.addWidget(self.in_hari, 1, 2, 1, 2)
-        lay_waktu.addWidget(self.in_mulai, 1, 4, 1, 2)
-        lay_waktu.addWidget(self.in_selesai, 1, 6, 1, 2)
+        lay_waktu.addWidget(self.cb_jam_slot, 1, 4, 1, 2)
 
         root.addWidget(g_waktu)
 
@@ -222,7 +245,7 @@ class MainWindow(QWidget):
         root.addWidget(g_dosen)
 
         # =========================
-        # Nota Dinas Inputs
+        # Nota Dinas
         # =========================
         g_nd = QGroupBox("Undangan Nota Dinas (Input Manual)")
         lay_nd = QGridLayout(g_nd)
@@ -236,11 +259,11 @@ class MainWindow(QWidget):
 
         self.in_id_nd = QLineEdit()
 
-        self.in_tanggal_nd = QDateEdit()
+        self.in_tanggal_nd = NoWheelDateEdit()
         self.in_tanggal_nd.setCalendarPopup(True)
         self.in_tanggal_nd.setDate(QDate.currentDate())
 
-        self.cb_prodi = QComboBox()
+        self.cb_prodi = NoWheelComboBox()
         self.cb_prodi.addItems(["Ilmu Aktuaria", "Statistika", "Matematika"])
         self.cb_prodi.setCurrentIndex(0)
 
@@ -294,19 +317,17 @@ class MainWindow(QWidget):
 
         self.btn_excel = QPushButton("Load Excel Dosen")
         self.btn_reset = QPushButton("Reset")
-
-        self.btn_generate_all = QPushButton("Generate Semua")  # <- NEW (ND + BA)
         self.btn_generate_nd = QPushButton("Generate Nota Dinas")
-
         self.btn_generate_ba = QPushButton("Generate Berita Acara")
-        self.btn_generate_ba.setObjectName("primaryButton")
+        self.btn_generate_all = QPushButton("Generate Semua")  # ND + BA
+        self.btn_generate_all.setObjectName("primaryButton")
 
         row_btn.addWidget(self.btn_excel)
         row_btn.addWidget(self.btn_reset)
         row_btn.addStretch(1)
-        row_btn.addWidget(self.btn_generate_all)
         row_btn.addWidget(self.btn_generate_nd)
         row_btn.addWidget(self.btn_generate_ba)
+        row_btn.addWidget(self.btn_generate_all)
 
         root.addLayout(row_btn)
 
@@ -324,7 +345,6 @@ class MainWindow(QWidget):
         self.btn_generate_nd.clicked.connect(self.on_generate_nota_dinas)
         self.btn_generate_all.clicked.connect(self.on_generate_all)
 
-        # spacer bawah
         bottom_spacer = QWidget()
         bottom_spacer.setFixedHeight(8)
         root.addWidget(bottom_spacer)
@@ -345,7 +365,7 @@ class MainWindow(QWidget):
                 left: 10px;
                 padding: 0 6px 0 6px;
             }
-            QLineEdit, QTextEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {
+            QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox {
                 border: 1px solid #d6d6d6;
                 border-radius: 8px;
                 padding: 6px 8px;
@@ -367,11 +387,11 @@ class MainWindow(QWidget):
                 font-weight: 700;
             }
             QPushButton#primaryButton:hover { background: #000; }
-        """
+            """
         )
 
     def _make_searchable_combo(self, placeholder: str) -> QComboBox:
-        cb = QComboBox()
+        cb = NoWheelComboBox()
         cb.setEditable(True)
         cb.setInsertPolicy(QComboBox.NoInsert)
         cb.setPlaceholderText(placeholder)
@@ -469,30 +489,24 @@ class MainWindow(QWidget):
 
     # ---------- Reset ----------
     def on_reset(self):
-        # Mahasiswa
         self.in_nama.clear()
         self.in_npm.clear()
         self.in_judul.clear()
         self.in_urutan.setValue(1)
 
-        # Waktu ujian default hari ini
         self.in_tanggal.setDate(QDate.currentDate())
         self.in_hari.setText(nama_hari_indonesia(self.in_tanggal.date()))
-        self.in_mulai.setTime(QTime(0, 0))
-        self.in_selesai.setTime(QTime(0, 0))
+        self.cb_jam_slot.setCurrentIndex(0)
 
-        # Dosen (kosong)
         for cb in (self.cb_pb1, self.cb_pb2, self.cb_pj1, self.cb_pj2):
             cb.setCurrentIndex(0)
             cb.setEditText("")
 
-        # Nota Dinas
         self.in_id_nd.clear()
         self.in_lokasi_ujian.clear()
         self.in_tanggal_nd.setDate(QDate.currentDate())
         self.cb_prodi.setCurrentIndex(0)
 
-        # output folder tidak diubah
         self.lbl_status.setText("Status: form di-reset (folder output & Excel tetap).")
 
     # ---------- Common gather ----------
@@ -512,15 +526,22 @@ class MainWindow(QWidget):
 
         nama_mhs = self.in_nama.text().strip()
         npm = self.in_npm.text().strip()
-        judul = self.in_judul.toPlainText().strip()
+        judul = self.in_judul.text().strip()
 
         urutan_angka = int(self.in_urutan.value())
         urutan_kata = urutan_ke_kata(urutan_angka)
 
         hari = self.in_hari.text().strip()
         tanggal_str = format_tanggal_indonesia(self.in_tanggal.date())
-        jam_mulai = self.in_mulai.time().toString("HH:mm")
-        jam_selesai = self.in_selesai.time().toString("HH:mm")
+
+        slot = self.cb_jam_slot.currentText().strip()
+        if not slot:
+            return False, "Waktu ujian wajib dipilih.", {}
+
+        slot_clean = slot.replace(" WIB", "")
+        jam_mulai_raw, jam_selesai_raw = slot_clean.split(" - ")
+        jam_mulai = jam_mulai_raw.replace(".", ":")
+        jam_selesai = jam_selesai_raw.replace(".", ":")
 
         return (
             True,
@@ -543,7 +564,7 @@ class MainWindow(QWidget):
             },
         )
 
-    # ---------- Internal generators (return Path) ----------
+    # ---------- Internal generators ----------
     def _generate_berita_acara(self) -> Path:
         ok, msg, data = self._get_common_form()
         if not ok:
@@ -637,6 +658,7 @@ class MainWindow(QWidget):
         tanggal_nd_qdate = self.in_tanggal_nd.date()
         tanggal_nd_iso = format_tanggal_iso(tanggal_nd_qdate)  # 2025-12-23
         tanggal_nd_id = format_tanggal_indonesia(tanggal_nd_qdate)  # 23 Desember 2025
+        tahun_nd = str(tanggal_nd_qdate.year())  # <-- NEW
 
         output_filename = (
             f"{tanggal_nd_iso}_{id_nd}_Undangan_Ujian_Skripsi_S1_"
@@ -648,6 +670,7 @@ class MainWindow(QWidget):
             "prodi": prodi,
             "lokasi_ujian": lokasi_ujian,
             "tanggal_hari_ini": tanggal_nd_id,
+            "tahun_nd": tahun_nd,  # <-- NEW: untuk {{tahun_nd}}
             "nama_mahasiswa": data["nama_mhs"],
             "npm": data["npm"],
             "judul_skripsi": data["judul"],
@@ -678,7 +701,6 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Gagal generate Berita Acara", str(e))
             return
-
         self.lbl_status.setText(f"Status: Berita Acara sukses → {out_path}")
         QMessageBox.information(
             self, "Sukses", f"Berita Acara berhasil dibuat:\n{out_path}"
@@ -690,7 +712,6 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Gagal generate Nota Dinas", str(e))
             return
-
         self.lbl_status.setText(f"Status: Nota Dinas sukses → {out_path}")
         QMessageBox.information(
             self, "Sukses", f"Nota Dinas berhasil dibuat:\n{out_path}"

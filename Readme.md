@@ -125,9 +125,13 @@ Build pakai:
    .\.venv\Scripts\Activate.ps1
 
 2. Build EXE (onefile + tanpa console + include semua resources)
-   pyinstaller `  --noconsole`
-   --onefile `  --name "BeritaAcaraSkripsi"`
-   --clean `  --hidden-import docxtpl`
-   --hidden-import jinja2 `  --hidden-import lxml`
-   --add-data "resources;resources" `
-   main.py
+   pyinstaller `
+   > > --noconsole `  --onefile`
+   > > --name "BeritaAcaraSkripsi" `  --clean`
+   > > --hidden-import docxtpl `  --hidden-import jinja2`
+   > > --hidden-import lxml `  --hidden-import docxtpl`
+   > > --hidden-import jinja2 `  --hidden-import lxml`
+   > > --hidden-import jinja2 `  --hidden-import lxml`
+   > > --add-data "resources;resources" `  --hidden-import lxml`
+   > > --add-data "resources;resources" `
+   > > main.py
