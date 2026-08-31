@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QDate, QUrl
+from PySide6.QtCore import Qt, QDate, QUrl, QThread, Signal
 from PySide6.QtGui import QFont, QDesktopServices
 from PySide6.QtWidgets import (
     QWidget,
@@ -32,7 +32,7 @@ from core.paths import (
     pilih_template_berdasarkan_pembimbing,
     pilih_template_nota_dinas_berdasarkan_pembimbing,
 )
-from core.excel_loader import load_dosen_excel, Dosen
+from core.excel_loader import load_dosen_excel, sync_dosen_from_online, Dosen
 from core.date_formatter import (
     format_tanggal_indonesia,
     format_tanggal_iso,
@@ -74,6 +74,30 @@ class NoWheelDateEdit(QDateEdit):
         super().wheelEvent(event)
 
 
+# =========================
+# Worker: sync dosen online (background thread)
+# =========================
+class DosenSyncWorker(QThread):
+    """
+    Jalankan sync_dosen_from_online() di background thread supaya
+    UI tidak freeze saat request ke Google Sheets.
+    """
+
+    finished_ok = Signal(Path)
+    finished_error = Signal(str)
+
+    def __init__(self, cache_path: Path):
+        super().__init__()
+        self.cache_path = cache_path
+
+    def run(self):
+        try:
+            result_path = sync_dosen_from_online(self.cache_path)
+            self.finished_ok.emit(result_path)
+        except Exception as e:
+            self.finished_error.emit(str(e))
+
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -85,6 +109,10 @@ class MainWindow(QWidget):
 
         self.dosen_by_id: dict[str, Dosen] = {}
         self.display_to_id: dict[str, str] = {}
+
+        # simpan referensi worker supaya tidak di-garbage-collect saat masih jalan
+        self._startup_sync_worker: DosenSyncWorker | None = None
+        self._manual_sync_worker: DosenSyncWorker | None = None
 
         self._build_ui()
         self._apply_styles()
@@ -316,6 +344,7 @@ class MainWindow(QWidget):
         row_btn.setSpacing(10)
 
         self.btn_excel = QPushButton("Load Excel Dosen")
+        self.btn_sync_dosen = QPushButton("🔄 Sync Data Dosen (Online)")
         self.btn_reset = QPushButton("Reset")
         self.btn_generate_nd = QPushButton("Generate Nota Dinas")
         self.btn_generate_ba = QPushButton("Generate Berita Acara")
@@ -323,6 +352,7 @@ class MainWindow(QWidget):
         self.btn_generate_all.setObjectName("primaryButton")
 
         row_btn.addWidget(self.btn_excel)
+        row_btn.addWidget(self.btn_sync_dosen)
         row_btn.addWidget(self.btn_reset)
         row_btn.addStretch(1)
         row_btn.addWidget(self.btn_generate_nd)
@@ -337,6 +367,7 @@ class MainWindow(QWidget):
 
         # signals
         self.btn_excel.clicked.connect(self.on_pick_excel)
+        self.btn_sync_dosen.clicked.connect(self.on_sync_dosen)
         self.btn_output.clicked.connect(self.on_pick_output_folder)
         self.btn_open_output.clicked.connect(self.on_open_output_folder)
 
@@ -350,8 +381,7 @@ class MainWindow(QWidget):
         root.addWidget(bottom_spacer)
 
     def _apply_styles(self):
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QWidget { font-size: 12px; }
             QGroupBox {
                 font-weight: 600;
@@ -380,6 +410,7 @@ class MainWindow(QWidget):
                 background: #fafafa;
             }
             QPushButton:hover { background: #f2f2f2; }
+            QPushButton:disabled { color: #999; background: #f5f5f5; }
             QPushButton#primaryButton {
                 background: #111;
                 color: white;
@@ -387,8 +418,7 @@ class MainWindow(QWidget):
                 font-weight: 700;
             }
             QPushButton#primaryButton:hover { background: #000; }
-            """
-        )
+            """)
 
     def _make_searchable_combo(self, placeholder: str) -> QComboBox:
         cb = NoWheelComboBox()
@@ -423,20 +453,53 @@ class MainWindow(QWidget):
         self._refresh_output_label()
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_root)))
 
-    # ---------- Defaults ----------
+    # ---------- Defaults & auto-sync saat startup ----------
     def _load_defaults_if_any(self):
         default_excel = resource_path("resources/dosen.xlsx")
+
+        # 1) Load data lokal dulu (kalau ada) supaya app langsung usable
+        #    tanpa menunggu network. Sync online akan menyusul di background.
         if default_excel.exists():
             self.excel_path = default_excel
             try:
                 self._load_excel_into_ui(default_excel)
                 self.lbl_status.setText(
-                    "Status: default Excel terdeteksi. Template auto (1/2 pembimbing)."
+                    "Status: data lokal dimuat. Sedang sync ke online di background..."
                 )
             except Exception as e:
-                self.lbl_status.setText(
-                    f"Status: default Excel ditemukan, tapi gagal load: {e}"
-                )
+                self.lbl_status.setText(f"Status: gagal load data dosen lokal: {e}")
+        else:
+            self.lbl_status.setText(
+                "Status: belum ada data dosen lokal. Sedang sync dari online..."
+            )
+
+        # 2) Jalankan sync online di background thread (tidak blocking UI)
+        self._startup_sync_worker = DosenSyncWorker(default_excel)
+        self._startup_sync_worker.finished_ok.connect(self._on_startup_sync_ok)
+        self._startup_sync_worker.finished_error.connect(self._on_startup_sync_error)
+        self._startup_sync_worker.start()
+
+    def _on_startup_sync_ok(self, path: Path):
+        try:
+            self.excel_path = path
+            self._load_excel_into_ui(path)
+            self.lbl_status.setText(
+                "Status: data dosen otomatis ter-sync dari online. "
+                "Template auto (1/2 pembimbing)."
+            )
+        except Exception as e:
+            self.lbl_status.setText(f"Status: sync online sukses, tapi gagal load: {e}")
+
+    def _on_startup_sync_error(self, error_msg: str):
+        if self.excel_path and self.excel_path.exists():
+            self.lbl_status.setText(
+                f"Status: sync online gagal ({error_msg}), pakai data dosen lokal terakhir."
+            )
+        else:
+            self.lbl_status.setText(
+                f"Status: sync online gagal & belum ada data lokal ({error_msg}). "
+                "Silakan Load Excel manual."
+            )
 
     # ---------- Excel ----------
     def on_pick_excel(self):
@@ -453,6 +516,43 @@ class MainWindow(QWidget):
             )
         except Exception as e:
             QMessageBox.critical(self, "Gagal load Excel", str(e))
+
+    def on_sync_dosen(self):
+        """Sync manual dipicu tombol, dijalankan di background thread juga."""
+        cache_path = resource_path("resources/dosen.xlsx")
+
+        self.btn_sync_dosen.setEnabled(False)
+        self.lbl_status.setText("Status: sedang sync data dosen dari online...")
+
+        self._manual_sync_worker = DosenSyncWorker(cache_path)
+        self._manual_sync_worker.finished_ok.connect(self._on_manual_sync_ok)
+        self._manual_sync_worker.finished_error.connect(self._on_manual_sync_error)
+        self._manual_sync_worker.start()
+
+    def _on_manual_sync_ok(self, path: Path):
+        self.btn_sync_dosen.setEnabled(True)
+        try:
+            self.excel_path = path
+            self._load_excel_into_ui(path)
+            self.lbl_status.setText(
+                "Status: data dosen berhasil di-sync dari Google Sheets."
+            )
+            QMessageBox.information(
+                self, "Sync Berhasil", "Data dosen berhasil diperbarui dari online."
+            )
+        except Exception as e:
+            self.lbl_status.setText(f"Status: sync sukses, tapi gagal load: {e}")
+
+    def _on_manual_sync_error(self, error_msg: str):
+        self.btn_sync_dosen.setEnabled(True)
+        self.lbl_status.setText(
+            "Status: sync gagal, tetap pakai data dosen lokal terakhir."
+        )
+        QMessageBox.warning(
+            self,
+            "Sync Gagal",
+            f"Gagal ambil data online:\n{error_msg}\n\nData lokal tetap dipakai.",
+        )
 
     def _load_excel_into_ui(self, path: Path):
         self.dosen_by_id, self.display_to_id = load_dosen_excel(path)

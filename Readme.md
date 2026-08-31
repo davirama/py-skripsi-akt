@@ -73,6 +73,7 @@ pyinstaller `  --noconsole`
 --onefile `  --name "BeritaAcaraSkripsi"`
 --clean `  --hidden-import docxtpl`
 --hidden-import jinja2 `  --hidden-import lxml`
+--hidden-import requests ` --hidden-import requests`
 --add-data "resources;resources" `
 main.py
 

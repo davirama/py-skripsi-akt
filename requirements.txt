@@ -2,4 +2,5 @@ pyside6
 pandas
 openpyxl
 docxtpl
+requests
 pyinstaller

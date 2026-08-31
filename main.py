@@ -1,6 +1,12 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from ui_main import MainWindow
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 
 def main():
