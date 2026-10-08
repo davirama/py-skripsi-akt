@@ -19,31 +19,16 @@ def resource_path(relative: str) -> Path:
     return app_root() / relative
 
 
-def _pilih_template(jumlah_pembimbing: int, file_1: str, file_2: str) -> Path:
-    if jumlah_pembimbing == 1:
-        return resource_path(f"resources/{file_1}")
-    if jumlah_pembimbing == 2:
-        return resource_path(f"resources/{file_2}")
-    raise ValueError("Jumlah pembimbing tidak valid (harus 1 atau 2)")
+def template_berita_acara() -> Path:
+    """
+    Template Berita Acara + Nilai. Satu file untuk 1 atau 2 pembimbing:
+    baris Pembimbing 2 hanya muncul jika `pembimbing_2` terisi.
+    """
+    return resource_path("resources/template_berita_acara_dan_nilai.docx")
 
 
-def pilih_template_berdasarkan_pembimbing(jumlah_pembimbing: int) -> Path:
+def template_nota_dinas() -> Path:
     """
-    Template Berita Acara + Nilai.
+    Template Undangan Nota Dinas. Satu file untuk 1 atau 2 pembimbing.
     """
-    return _pilih_template(
-        jumlah_pembimbing,
-        "template_berita_acara_dan_nilai_1pembimbing.docx",
-        "template_berita_acara_dan_nilai_2pembimbing.docx",
-    )
-
-
-def pilih_template_nota_dinas_berdasarkan_pembimbing(jumlah_pembimbing: int) -> Path:
-    """
-    Template Undangan Nota Dinas.
-    """
-    return _pilih_template(
-        jumlah_pembimbing,
-        "template_undangan_nota_dinas_1pembimbing.docx",
-        "template_undangan_nota_dinas_2pembimbing.docx",
-    )
+    return resource_path("resources/template_undangan_nota_dinas.docx")

@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
 from core.paths import (
     app_root,
     resource_path,
-    pilih_template_berdasarkan_pembimbing,
-    pilih_template_nota_dinas_berdasarkan_pembimbing,
+    template_berita_acara,
+    template_nota_dinas,
 )
 from core.excel_loader import load_dosen_excel, sync_dosen_from_online, Dosen
 from core.date_formatter import (
@@ -622,8 +622,6 @@ class MainWindow(QWidget):
         if not pb1:
             return False, "Pembimbing 1 wajib dipilih.", {}
 
-        jumlah_pembimbing = 2 if pb2 else 1
-
         nama_mhs = self.in_nama.text().strip()
         npm = self.in_npm.text().strip()
         judul = self.in_judul.text().strip()
@@ -651,7 +649,6 @@ class MainWindow(QWidget):
                 "pb2": pb2,
                 "pj1": pj1,
                 "pj2": pj2,
-                "jumlah_pembimbing": jumlah_pembimbing,
                 "nama_mhs": nama_mhs,
                 "npm": npm,
                 "judul": judul,
@@ -674,9 +671,8 @@ class MainWindow(QWidget):
         pb2: Dosen | None = data["pb2"]
         pj1: Dosen | None = data["pj1"]
         pj2: Dosen | None = data["pj2"]
-        jumlah_pembimbing: int = data["jumlah_pembimbing"]
 
-        template_path = pilih_template_berdasarkan_pembimbing(jumlah_pembimbing)
+        template_path = template_berita_acara()
         if not template_path.exists():
             raise FileNotFoundError(
                 f"Template berita acara tidak ditemukan: {template_path}"
@@ -737,7 +733,6 @@ class MainWindow(QWidget):
         pb2: Dosen | None = data["pb2"]
         pj1: Dosen | None = data["pj1"]
         pj2: Dosen | None = data["pj2"]
-        jumlah_pembimbing: int = data["jumlah_pembimbing"]
 
         id_nd = self.in_id_nd.text().strip()
         prodi = self.cb_prodi.currentText().strip()
@@ -747,9 +742,7 @@ class MainWindow(QWidget):
         if not ok_nd:
             raise ValueError(msg_nd)
 
-        template_path = pilih_template_nota_dinas_berdasarkan_pembimbing(
-            jumlah_pembimbing
-        )
+        template_path = template_nota_dinas()
         if not template_path.exists():
             raise FileNotFoundError(
                 f"Template nota dinas tidak ditemukan: {template_path}"

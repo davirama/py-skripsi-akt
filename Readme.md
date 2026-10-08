@@ -4,7 +4,7 @@ Aplikasi desktop berbasis Python + PySide6 untuk menghasilkan:
 
 - ✅ Berita Acara dan Nilai Ujian Skripsi
 - ✅ Undangan Nota Dinas Ujian Skripsi
-- ✅ Otomatis memilih template 1 atau 2 pembimbing
+- ✅ Satu template untuk 1 atau 2 pembimbing (baris Pembimbing 2 hilang otomatis)
 - ✅ Data dosen dari Google Sheets (sync online) dengan fallback Excel lokal
 - ✅ Output `.docx` siap cetak
 - ✅ Bisa dibuild menjadi `.exe` (tanpa perlu Python di komputer lain)
@@ -22,8 +22,8 @@ Aplikasi desktop berbasis Python + PySide6 untuk menghasilkan:
 │  └─ excel_loader.py      # load Excel + sync Google Sheets
 ├─ resources/
 │  ├─ dosen.xlsx
-│  ├─ template_berita_acara_dan_nilai_{1,2}pembimbing.docx
-│  └─ template_undangan_nota_dinas_{1,2}pembimbing.docx
+│  ├─ template_berita_acara_dan_nilai.docx   # 1 file untuk 1 / 2 pembimbing
+│  └─ template_undangan_nota_dinas.docx      # 1 file untuk 1 / 2 pembimbing
 ├─ tests/                  # pytest
 ├─ pytest.ini
 ├─ test-watch.bat          # test otomatis (watch mode)
@@ -92,9 +92,25 @@ untuk hanya menjalankan test yang gagal, dan `Ctrl+C` untuk berhenti.
 |---|---|
 | `test_validator.py` | Aturan validasi form dan nota dinas |
 | `test_date_formatter.py` | Format tanggal, nama hari, nomor urut |
-| `test_paths.py` | Pemilihan template 1/2 pembimbing |
+| `test_paths.py` | Template ditemukan |
 | `test_excel_loader.py` | Parsing data dosen dan sync online (request dipalsukan) |
-| `test_word_generator.py` | Render 4 template asli dan penamaan file output |
+| `test_word_generator.py` | Render 2 template asli untuk kasus 1 dan 2 pembimbing, serta penamaan file output |
+
+## 📝 Mengedit Template Word
+
+Hanya ada **satu template per dokumen**. Aplikasi mengisi `pembimbing_2` dengan
+string kosong bila hanya ada 1 pembimbing, dan baris Pembimbing 2 otomatis hilang.
+
+Hal yang perlu diperhatikan saat mengedit `resources/*.docx`:
+
+- Jangan hapus baris kecil yang berisi `{%tr if pembimbing_2 %}` dan
+  `{%tr endif %}` (di atas dan di bawah baris Pembimbing 2 pada tabel), serta
+  paragraf `{%p if pembimbing_2 %}` / `{%p endif %}` di Nota Dinas. Baris-baris
+  itu tidak ikut tercetak, tetapi menentukan baris mana yang kondisional.
+- Teks Pembimbing 2 (`{{pembimbing_2}}`) harus tetap berada di antara kedua tag.
+- Satu perubahan format cukup dilakukan sekali; berlaku untuk 1 maupun 2 pembimbing.
+- Setelah mengedit, jalankan `pytest` (atau `test-watch.bat`). Test akan merender
+  template untuk kedua kasus dan memastikan tidak ada placeholder yang tersisa.
 
 ## 🏗️ Build menjadi EXE (Windows)
 
