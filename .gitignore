@@ -3,8 +3,7 @@
 # ===============================
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
 *.so
 *.egg-info/
 .eggs/
@@ -12,31 +11,56 @@ __pycache__/
 # Virtual environment
 .venv/
 venv/
+env/
 ENV/
 
 # ===============================
-# Build / Distribution
+# Testing / coverage
+# ===============================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+
+# ===============================
+# Build / Distribution (PyInstaller)
+# .spec sengaja DILACAK supaya konfigurasi build tersimpan
 # ===============================
 build/
 dist/
-*.spec
+*.rar
+*.zip
 
 # ===============================
-# App Generated Output (IGNORED)
+# Output & data lokal aplikasi
 # ===============================
 output/
-output/**
+history.db
+history.db-*
+config.json
 
 # ===============================
-# OS / Editor
+# Word / Office
+# ===============================
+~$*.docx
+~$*.xlsx
+.~lock.*
+
+# ===============================
+# OS / Editor / Tools
 # ===============================
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
+.claude/
 
 # ===============================
 # Logs / Temp
 # ===============================
 *.log
 *.tmp
+*.bak

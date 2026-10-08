@@ -1,138 +1,168 @@
-📄 Generator Berita Acara & Nota Dinas Ujian Skripsi (S1)
+# 📄 Generator Berita Acara & Nota Dinas Ujian Skripsi (S1)
 
 Aplikasi desktop berbasis Python + PySide6 untuk menghasilkan:
 
-✅ Berita Acara dan Nilai Ujian Skripsi
+- ✅ Berita Acara dan Nilai Ujian Skripsi
+- ✅ Undangan Nota Dinas Ujian Skripsi
+- ✅ Otomatis memilih template 1 atau 2 pembimbing
+- ✅ Data dosen dari Google Sheets (sync online) dengan fallback Excel lokal
+- ✅ Output `.docx` siap cetak
+- ✅ Bisa dibuild menjadi `.exe` (tanpa perlu Python di komputer lain)
 
-✅ Undangan Nota Dinas Ujian Skripsi
+## 📁 Struktur Project
 
-✅ Otomatis pilih template 1 atau 2 pembimbing
-
-✅ Data dosen dari Excel
-
-✅ Output .docx siap cetak
-
-✅ Bisa dibuild menjadi file .exe (tanpa perlu Python di komputer lain)
-
-📁 Struktur Project
-project/
-│
-├─ main.py
-├─ ui_main.py
+```
+├─ main.py                 # entry point
+├─ ui_main.py              # GUI (PySide6)
 ├─ core/
-│ ├─ paths.py
-│ ├─ word_generator.py
-│ ├─ date_formatter.py
-│ ├─ validator.py
-│ └─ excel_loader.py
-│
+│  ├─ paths.py             # path resource + pemilihan template
+│  ├─ word_generator.py    # render template .docx (docxtpl)
+│  ├─ date_formatter.py    # tanggal/hari/urutan bahasa Indonesia
+│  ├─ validator.py         # validasi form
+│  └─ excel_loader.py      # load Excel + sync Google Sheets
 ├─ resources/
-│ ├─ dosen.xlsx
-│ ├─ template_berita_acara_dan_nilai_1pembimbing.docx
-│ ├─ template_berita_acara_dan_nilai_2pembimbing.docx
-│ ├─ template_undangan_nota_dinas_1pembimbing.docx
-│ └─ template_undangan_nota_dinas_2pembimbing.docx
-│
-├─ .venv/
-├─ README.md
+│  ├─ dosen.xlsx
+│  ├─ template_berita_acara_dan_nilai_{1,2}pembimbing.docx
+│  └─ template_undangan_nota_dinas_{1,2}pembimbing.docx
+├─ tests/                  # pytest
+├─ pytest.ini
+├─ test-watch.bat          # test otomatis (watch mode)
+├─ requirements.txt        # dependency aplikasi
+└─ requirements-dev.txt    # + pytest, pytest-watcher
+```
 
-⚙️ Setup Environment (Sekali di Komputer Dev)
-1️⃣ Aktifkan Virtual Environment
+## ⚙️ Setup (sekali di komputer dev)
+
+```powershell
+# 1. Aktifkan virtual environment
 .\.venv\Scripts\Activate.ps1
 
-Pastikan prompt berubah menjadi:
+# 2. Install dependency (aplikasi + testing)
+pip install -r requirements-dev.txt
+```
 
-(.venv) PS ...
+Jika `.venv` belum ada: `python -m venv .venv` lalu ulangi langkah di atas.
 
-2️⃣ Install Dependency
-pip install -r requirements.txt
+## ▶️ Menjalankan Aplikasi
 
-Atau manual:
-
-pip install pyside6 pandas openpyxl docxtpl pyinstaller
-
-▶️ Menjalankan Aplikasi (Mode Development)
+```powershell
 python main.py
+```
 
-🏗️ Build Menjadi File EXE (Windows)
+## 🧪 Testing
 
-Catatan penting:
+Test memakai **pytest** dan tidak membuka GUI. Pembuatan dokumen dites dengan
+merender template asli lalu membaca ulang isinya, jadi perubahan template yang
+merusak placeholder akan ketahuan.
 
-Pastikan EXE lama tidak sedang berjalan
+### Sekali jalan
 
-Disarankan tutup Explorer di folder dist/
+```powershell
+# dengan venv aktif
+pytest
 
-Jika error Access is denied, hapus folder dist/ dan build/
+# tanpa mengaktifkan venv
+.\.venv\Scripts\python.exe -m pytest
+```
 
-✅ Langkah Build yang BENAR
-1️⃣ Aktifkan venv
+Opsi yang sering dipakai:
+
+| Perintah | Fungsi |
+|---|---|
+| `pytest tests/test_validator.py` | Jalankan satu file saja |
+| `pytest -k "nota_dinas"` | Jalankan test yang namanya mengandung kata tertentu |
+| `pytest -x` | Berhenti di kegagalan pertama |
+| `pytest --lf` | Ulangi hanya test yang gagal terakhir kali |
+
+### Otomatis (watch mode)
+
+Klik dua kali **`test-watch.bat`**, atau jalankan di terminal:
+
+```powershell
+.\test-watch.bat
+```
+
+Test dijalankan lagi setiap kali ada file `.py`, `.docx`, atau `.xlsx` yang
+disimpan, dan hasilnya tampil langsung di jendela. Tekan `f` di jendela itu
+untuk hanya menjalankan test yang gagal, dan `Ctrl+C` untuk berhenti.
+
+### Isi test
+
+| File | Yang dites |
+|---|---|
+| `test_validator.py` | Aturan validasi form dan nota dinas |
+| `test_date_formatter.py` | Format tanggal, nama hari, nomor urut |
+| `test_paths.py` | Pemilihan template 1/2 pembimbing |
+| `test_excel_loader.py` | Parsing data dosen dan sync online (request dipalsukan) |
+| `test_word_generator.py` | Render 4 template asli dan penamaan file output |
+
+## 🏗️ Build menjadi EXE (Windows)
+
+Catatan:
+
+- Pastikan EXE lama tidak sedang berjalan.
+- Tutup Explorer yang membuka folder `dist/`.
+- Jika muncul `Access is denied`, hapus folder `dist/` dan `build/`.
+
+```powershell
 .\.venv\Scripts\Activate.ps1
 
-2️⃣ Jalankan PyInstaller
-pyinstaller `  --noconsole`
---onefile `  --name "BeritaAcaraSkripsi"`
---clean `  --hidden-import docxtpl`
---hidden-import jinja2 `  --hidden-import lxml`
---hidden-import requests ` --hidden-import requests`
---add-data "resources;resources" `
-main.py
+pyinstaller `
+  --noconsole `
+  --onefile `
+  --name "BeritaAcaraSkripsi" `
+  --clean `
+  --hidden-import docxtpl `
+  --hidden-import jinja2 `
+  --hidden-import lxml `
+  --hidden-import requests `
+  --add-data "resources;resources" `
+  main.py
+```
 
-📦 Hasil Build
+Atau cukup `pyinstaller BeritaAcaraSkripsi.spec` karena konfigurasinya sudah
+tersimpan di file tersebut.
 
-Setelah sukses, file akan muncul di:
+Hasilnya: `dist/BeritaAcaraSkripsi.exe`. File ini bisa dijalankan langsung di
+komputer lain tanpa Python atau library tambahan.
 
-dist/
-└─ BeritaAcaraSkripsi.exe
+> Jalankan `pytest` sebelum build supaya `.exe` tidak membawa bug yang sudah
+> tertangkap test.
 
-✅ File ini bisa dijalankan langsung di komputer lain
-❌ Tidak perlu install Python / pip / library apa pun
+## 📝 Format Nama File Output
 
-📝 Format Nama File Output
-1️⃣ Berita Acara
-Berita Acara dan Nilai Ujian Skripsi_Nama Mahasiswa_NPM.docx
+Output disimpan di `output/<Nama>_<NPM>/`.
 
-2️⃣ Nota Dinas
-YYYY-MM-DD_NoID_Undangan_Ujian_Skripsi_S1_Prodi_Nama Mahasiswa_NPM.docx
+1. **Berita Acara**
+   `Berita Acara dan Nilai Ujian Skripsi_<Nama>_<NPM>.docx`
+2. **Nota Dinas**
+   `YYYY-MM-DD_<ID ND>_Undangan_Ujian_Skripsi_S1_<Prodi>_<Nama>_<NPM>.docx`
 
-Contoh:
+   Contoh: `2025-12-23_123ND_Undangan_Ujian_Skripsi_S1_Matematika_Andi Wijaya_21120123.docx`
 
-2025-12-23_123ND_Undangan_Ujian_Skripsi_S1_Matematika_Andi Wijaya_21120123.docx
+## 🛠️ Troubleshooting
 
-🛠️ Troubleshooting
-❌ Error: PermissionError: [WinError 5] Access is denied
+**`PermissionError: [WinError 5] Access is denied` saat build**
 
-Solusi:
-
+```powershell
 Remove-Item .\dist -Recurse -Force
 Remove-Item .\build -Recurse -Force
+```
 
-Lalu build ulang.
+Lalu build ulang. Jika masih terjadi, tambahkan folder project ke Windows Defender
+Exclusion.
 
-Jika masih terjadi:
+**Template tidak ditemukan saat EXE dijalankan**
 
-Tambahkan Windows Defender Exclusion untuk folder project.
+Pastikan build memakai `--add-data "resources;resources"`.
 
-❌ Template tidak ditemukan saat EXE dijalankan
+**`pytest` tidak dikenali**
 
-Pastikan:
+Aktifkan venv dulu, atau pakai `.\.venv\Scripts\python.exe -m pytest`. Jika modul
+belum terpasang: `pip install -r requirements-dev.txt`.
 
-Folder resources/ ikut dibundle
+**Sync dosen gagal**
 
-Build pakai:
-
---add-data "resources;resources"
-
-1. Aktifkan venv
-   .\.venv\Scripts\Activate.ps1
-
-2. Build EXE (onefile + tanpa console + include semua resources)
-   pyinstaller `
-   > > --noconsole `  --onefile`
-   > > --name "BeritaAcaraSkripsi" `  --clean`
-   > > --hidden-import docxtpl `  --hidden-import jinja2`
-   > > --hidden-import lxml `  --hidden-import docxtpl`
-   > > --hidden-import jinja2 `  --hidden-import lxml`
-   > > --hidden-import jinja2 `  --hidden-import lxml`
-   > > --add-data "resources;resources" `  --hidden-import lxml`
-   > > --add-data "resources;resources" `
-   > > main.py
+Pastikan Google Sheets di-share dengan akses *Anyone with the link → Viewer* dan
+nama tab sheet persis `Dosen Mat`. Saat sync gagal, aplikasi tetap memakai
+`resources/dosen.xlsx`.
